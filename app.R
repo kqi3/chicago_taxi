@@ -93,7 +93,7 @@ time_tags <-c("[0-3.5)","[3.5-7)","[7-10.5)","[10.5-14)","[14-17.5)","[17.5-21)"
 community_info <- read.csv("./taxi_data/CommAreas.csv")
 community_info <- community_info[c("AREA_NUMBE","COMMUNITY","SHAPE_AREA","SHAPE_LEN")]
 colnames(community_info)<- c("area_number","community","SHAPE_AREA","SHAPE_LEN")
-community_info$community<- tolower(community_info$community)
+# community_info$community<- tolower(community_info$community)
 community_level<-levels(as.factor(community_info$community))
 
 #load("~/Documents/cs424project3/chicago_taxi/.RData")
@@ -124,7 +124,7 @@ ui <- dashboardPage(
     selectInput("distanceselection", "Select the kilometers or miles", distanceSequence, selected = "miles"),
     selectInput("hourselection","Select the hour format",hourSequence,selected ="24hour"),
     selectInput("fromtoselection","Select from/to",fromtoSequence,selected ="from"),
-    selectInput("communityselection","Select community",community_level,selected ="oakland")
+    selectInput("communityselection","Select community",community_level,selected ="ALBANY PARK")
     ),
   dashboardBody(
     tabItems(
@@ -144,7 +144,8 @@ ui <- dashboardPage(
                          box(title = "Table by Day of Year", status = "primary", solidHeader = TRUE, collapsible=TRUE, width = 4,
                              dataTableOutput("bydayofyear_table"),height=600)
                          
-                       ),
+                       )
+                     
                        
                 ), # row 5 / column 1,col 2
                 HTML("<br>"),
@@ -271,7 +272,7 @@ server <- function(input, output) {
       
       ggplot(data = as_tibble(group_tags), mapping = aes(x=value)) + 
         geom_bar(fill="steelblue",color="white",alpha=0.9) + 
-        labs(title='By Binne Miles',x='By binned miles',y='Count') +
+        labs(title='By Binned Miles',x='By binned miles',y='Count') +
         theme(plot.title = element_text(hjust=0.5, face="bold"))+
         scale_y_continuous(labels=label_comma())
      
@@ -370,10 +371,11 @@ server <- function(input, output) {
     
   },rownames=FALSE,options=list(lengthMenu = list(c(3, 6), c('3', '6')), list(searching = FALSE),autoWidth=TRUE, order=list(1, 'asc')))
   # 
+
   observe({
     
     
-    chicago_map <- leaflet() %>%
+    chicago_map <- leaflet(chicago_spdf) %>%
       
       addTiles(
         group = "OSM"
@@ -383,14 +385,14 @@ server <- function(input, output) {
         providers$CartoDB.Positron, group = "Light"
       ) %>%
       addProviderTiles(
-        providers$CartoDB.DarkMatter, group = "viridis"
+        providers$CartoDB.DarkMatter, group = "Dark"
       ) %>%
      setView(
         lng = initial_chicago_lng,
         lat = initial_chicago_lat, 
         zoom = initial_chicago_zoom
       ) %>%
-      addPolygons(data=chicago_spdf,weight=5,col = 'blue') %>% 
+      addPolygons(data=chicago_spdf,weight=5,col = 'blue',fillOpacity = 0.5) %>% 
       addLayersControl(
         baseGroups = c("OSM", "Light", "Dark"),
         options = layersControlOptions(collapsed = FALSE)
@@ -401,25 +403,42 @@ server <- function(input, output) {
     })
     
   })
+  new_icon = makeAwesomeIcon(icon = 'flag', markerColor = 'red', iconColor = 'white')
+  observe({
+    input$fromtoselection
+    proxy <- leafletProxy('leaf_taxi')
+    #selection is to
+    if(input$fromtoselection=="from"){
+      
+      all_pickupdata<- dplyr::left_join(x=taxi5,y=community_info,by=c("Pickup.Community.Area"="area_number"))%>%group_by(community)%>%dplyr::summarise(rides=n())
+      pick_df<- merge(chicago_spdf,all_pickupdata,by="community")
+      
+      pick_df@data <- pick_df@data%>%mutate(pick_percentage= as.numeric(format(round(as.numeric(rides)*100/as.numeric("11398006"),2))))
+      pal<-colorBin(c("darkgreen", "yellow", "orangered"), pick_df@data$pick_percentage,8)
+      
+        proxy%>%
+          clearShapes()%>%
+          addPolygons(data=pick_df, smoothFactor=0.2,color="blue",weight = 1,opacity = 0.5, fillColor = ~pal(pick_df@data$pick_percentage), fillOpacity = 0.8,stroke = TRUE,
+                      popup = ~paste("<b>Community Name:</b>",pick_df@data$community,"<b>Pickup Pertage:</b>",pick_df@data$pick_percentage),
+                      label = ~paste(pick_df@data$community,pick_df@data$pick_percentage),labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px", textsize = "15px", direction = "auto" )) )%>%
+          addLegend(pal = pal,
+                    values  = pick_df@data$pick_percentage,
+                    position = "bottomright",
+                    title = "Pickup Unit:%",
+                    
+                   )
+        
+       
+        
+
+    }
+    #selection is to
+    else{
+      
+    }
   
-  # observe({
-  #   input$fromtoselection
-  #   proxy <- leafletProxy('leaf_taxi')
-  #   if(input$fromtoselection=="from"){
-  #     all_pickupdata<- dplyr::left_join(x=taxi5,y=community_info,by=c("Pickup.Community.Area"="area_number"))%>%group_by(community)%>%dplyr::summarise(rides=n())
-  #     
-  #     pal<-colorBin(palette="" ,domain =all_pickupdata$rides ,bins=10,reverse = TRUE )
-  #     proxy%>% clearMarkers() %>%
-  #       clearShapes()%>%
-  #       addPolygons(data=chicago_spdf,weight=0.7,color=~pal(as.numeric(all_pickupdata$rides)),fillOpacity = 0.5,stroke = TRUE)
-  #     
-  #      
-  #   }
-  #   else{
-  #   }
-  #   
-  #   
-  # }) 
+
+  })
   # 
   
   
